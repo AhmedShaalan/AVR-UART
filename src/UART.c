@@ -17,8 +17,12 @@
 
   **************************************************************************/
 #include "uart.h"
+#include <avr/interrupt.h>
 
 void UART_initRxTx(void) {
+    // TODO: enable global interrput in SREG; Bit 7 – I: Global Interrupt Enable.
+    // TODO: enable Rx & Tx complete interrupt in UCSRA,
+    // TODO:    Bit 6 – TXC: USART Transmit Complete &  Bit 7 – RXC: USART Receive Complete
 
     // put the upper part of the baud number prescale in the UBBRH (high 8 bits)
     UBRRH = (UART_BAUD_RATE_PRESCALE >> 8);
@@ -34,6 +38,8 @@ void UART_initRxTx(void) {
 }
 
 void UART_initTx(void) {
+    // TODO: enable global interrput in SREG; Bit 7 – I: Global Interrupt Enable.
+    // TODO: enable Tx complete interrupt in UCSRA. Bit 6 – TXC: USART Transmit Complete
 
     // put the upper part of the baud number here (bits 8 to 11)
     UBRRH = (UART_BAUD_RATE_PRESCALE >> 8);
@@ -41,7 +47,7 @@ void UART_initTx(void) {
     // put the remaining part of the baud number here
     UBRRL = UART_BAUD_RATE_PRESCALE;
 
-    // enable receiver and transmitter
+    // enable transmitter
     UCSRB = (1 << TXEN);
 
     // set data bit length to 8-bit
@@ -49,6 +55,8 @@ void UART_initTx(void) {
 }
 
 void UART_initRx(void) {
+    // TODO: how we are going to tell when to
+    //   call the function that is intented to call when the interrupt is complete?
 
     // put the upper part of the baud number here (bits 8 to 11)
     UBRRH = (UART_BAUD_RATE_PRESCALE >> 8);
@@ -56,11 +64,14 @@ void UART_initRx(void) {
     // put the remaining part of the baud number here
     UBRRL = UART_BAUD_RATE_PRESCALE;
 
-    // enable receiver and transmitter
-    UCSRB = (1 << RXEN);
+    // enable receiver & Rx complete interrupt
+    UCSRB = (1 << RXEN) | (1 << RXCIE);
 
     // set data bit length to 8-bit
     UCSRC = (1 << URSEL) | (3 << UCSZ0);
+
+    // enable global interrupt
+    sei();
 }
 
 void UART_sendChar(uint8_t data) {
@@ -92,4 +103,10 @@ uint8_t UART_readChar(void) {
 
     // return received data
     return UDR;
+}
+
+ISR(USART_RXC_vect) {
+}
+
+ISR(USART_TXC_vect) {
 }
