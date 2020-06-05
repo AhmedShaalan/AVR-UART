@@ -16,8 +16,22 @@
         - No parity check
 
   **************************************************************************/
-#include "uart.h"
 #include <avr/interrupt.h>
+#include <util/atomic.h>
+#include <LCD.h>
+#include "uart.h"
+
+#define UART_BUFFER_SIZE_MASK (UART_BUFFER_SIZE - 1)
+
+#if (UART_BUFFER_SIZE & UART_BUFFER_SIZE_MASK)
+#error UART_BUFFER_SIZE must be power of 2
+#endif
+
+static volatile uint8_t UART_rxBuf[UART_BUFFER_SIZE];
+static volatile uint8_t UART_rxHead = 0;
+static volatile uint8_t UART_rxTail = 0;
+
+volatile int8_t UART_lastError = UART_ERROR_NO_ERROR;
 
 void UART_initRxTx(void) {
     // TODO: enable global interrput in SREG; Bit 7 – I: Global Interrupt Enable.
@@ -55,8 +69,6 @@ void UART_initTx(void) {
 }
 
 void UART_initRx(void) {
-    // TODO: how we are going to tell when to
-    //   call the function that is intented to call when the interrupt is complete?
 
     // put the upper part of the baud number here (bits 8 to 11)
     UBRRH = (UART_BAUD_RATE_PRESCALE >> 8);
@@ -95,18 +107,40 @@ void UART_sendLine(uint8_t* ptrString) {
     UART_sendChar('\n');
 }
 
-uint8_t UART_readChar(void) {
-
-    // wait till receive is completed
-    while (!(UCSRA & (1 << RXC)))
-        ;
-
-    // return received data
-    return UDR;
-}
-
 ISR(USART_RXC_vect) {
+    uint8_t tempHead;
+    uint8_t data = UDR;
+
+    // head position
+    tempHead = (UART_rxHead + 1) & UART_BUFFER_SIZE_MASK;
+
+    // check if we reached the tail. If true it means buffer is full
+    if (tempHead == UART_rxTail) {
+        UART_lastError = UART_ERROR_BUFFER_FULL;
+    } else {
+        // if not full, store Rx data.
+        UART_rxBuf[tempHead] = data;
+
+        // advance the head
+        UART_rxHead = tempHead;
+    }
 }
 
 ISR(USART_TXC_vect) {
+}
+
+uint8_t UART_getChar(void) {
+
+    // pause interrupts till we check if the buffer is full
+    ATOMIC_BLOCK(ATOMIC_FORCEON) {
+        // check if buffer is empty
+        if (UART_rxTail == UART_rxHead) {
+            return UART_BUFFER_EMPTY;
+        }
+    }
+
+    // advance the tail
+    UART_rxTail = (UART_rxTail + 1) & UART_BUFFER_SIZE_MASK;
+
+    return UART_rxBuf[UART_rxTail];
 }
